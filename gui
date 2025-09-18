@@ -1,0 +1,413 @@
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+if playerGui:FindFirstChild("AimAssistGUI_AbsoluteLock") then
+	playerGui.AimAssistGUI_AbsoluteLock:Destroy()
+end
+
+local CONFIG = {
+    AimSpeed = 12, 
+    MaxDistance = 500,
+    TargetPart = "Head",
+    FOV_Size = 500,
+    ProjectileSpeed = 2000
+}
+
+local aimAssistEnabled = true 
+local highlightEnabled = false
+local predictionEnabled = false
+local currentTarget = nil
+local arrowDebounce = false
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AimAssistGUI_AbsoluteLock"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = playerGui
+
+local mainContainer = Instance.new("Frame")
+mainContainer.Size = UDim2.new(0, 240, 0, 220)
+mainContainer.Position = UDim2.new(0.5, -120, 0, 20)
+mainContainer.BackgroundColor3 = Color3.fromRGB(30, 32, 34)
+mainContainer.BorderSizePixel = 0
+mainContainer.Visible = true
+mainContainer.Parent = screenGui
+
+local containerCorner = Instance.new("UICorner")
+containerCorner.CornerRadius = UDim.new(0, 8)
+containerCorner.Parent = mainContainer
+
+local containerStroke = Instance.new("UIStroke")
+containerStroke.Color = Color3.fromRGB(80, 80, 80)
+containerStroke.Thickness = 1
+containerStroke.Parent = mainContainer
+
+local dragBar = Instance.new("TextLabel")
+dragBar.Size = UDim2.new(1, 0, 0, 30)
+dragBar.Position = UDim2.new(0, 0, 0, 0)
+dragBar.BackgroundColor3 = Color3.fromRGB(45, 48, 51)
+dragBar.BorderSizePixel = 0
+dragBar.Font = Enum.Font.SourceSansSemibold
+dragBar.Text = "Aim Assist Controls"
+dragBar.TextColor3 = Color3.fromRGB(225, 225, 225)
+dragBar.TextSize = 16
+dragBar.Parent = mainContainer
+
+local dragBarCorner = Instance.new("UICorner")
+dragBarCorner.CornerRadius = UDim.new(0, 8)
+dragBarCorner.Parent = dragBar
+
+local controlPanel = Instance.new("Frame")
+controlPanel.Size = UDim2.new(1, -20, 1, -40)
+controlPanel.Position = UDim2.new(0, 10, 0, 30)
+controlPanel.BackgroundTransparency = 1
+controlPanel.Parent = mainContainer
+
+local distanceLabel = Instance.new("TextLabel")
+distanceLabel.Parent = controlPanel
+distanceLabel.Size = UDim2.new(0.5, -5, 0, 25)
+distanceLabel.Position = UDim2.new(0, 0, 0, 5)
+distanceLabel.Font = Enum.Font.SourceSans
+distanceLabel.Text = "نطاق تغطية الايم:"
+distanceLabel.TextSize = 16
+distanceLabel.TextColor3 = Color3.new(200, 200, 200)
+distanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+distanceLabel.BackgroundTransparency = 1
+
+local distanceInput = Instance.new("TextBox")
+distanceInput.Parent = controlPanel
+distanceInput.Size = UDim2.new(0.5, -5, 0, 25)
+distanceInput.Position = UDim2.new(0.5, 5, 0, 5)
+distanceInput.Font = Enum.Font.SourceSansBold
+distanceInput.Text = tostring(CONFIG.MaxDistance)
+distanceInput.TextSize = 16
+distanceInput.TextColor3 = Color3.new(255, 255, 255)
+distanceInput.BackgroundColor3 = Color3.fromRGB(60, 63, 66)
+distanceInput.ClearTextOnFocus = false
+local distCorner = Instance.new("UICorner")
+distCorner.CornerRadius = UDim.new(0, 6)
+distCorner.Parent = distanceInput
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Parent = controlPanel
+speedLabel.Size = UDim2.new(0.5, -5, 0, 25)
+speedLabel.Position = UDim2.new(0, 0, 0, 35)
+speedLabel.Font = Enum.Font.SourceSans
+speedLabel.Text = "سرعة الايم:"
+speedLabel.TextSize = 16
+speedLabel.TextColor3 = Color3.new(200, 200, 200)
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.BackgroundTransparency = 1
+
+local speedInput = Instance.new("TextBox")
+speedInput.Parent = controlPanel
+speedInput.Size = UDim2.new(0.5, -5, 0, 25)
+speedInput.Position = UDim2.new(0.5, 5, 0, 35)
+speedInput.Font = Enum.Font.SourceSansBold
+speedInput.Text = tostring(CONFIG.AimSpeed)
+speedInput.TextSize = 16
+speedInput.TextColor3 = Color3.new(255, 255, 255)
+speedInput.BackgroundColor3 = Color3.fromRGB(60, 63, 66)
+speedInput.ClearTextOnFocus = false
+local speedCorner = Instance.new("UICorner")
+speedCorner.CornerRadius = UDim.new(0, 6)
+speedCorner.Parent = speedInput
+
+local highlightButton = Instance.new("TextButton")
+highlightButton.Parent = controlPanel
+highlightButton.Size = UDim2.new(1, 0, 0, 35)
+highlightButton.Position = UDim2.new(0, 0, 0, 65)
+highlightButton.Font = Enum.Font.SourceSansBold
+highlightButton.Text = "تحديد التلبيز"
+highlightButton.TextSize = 18
+highlightButton.TextColor3 = Color3.new(1, 1, 1)
+local highlightCorner = Instance.new("UICorner")
+highlightCorner.CornerRadius = UDim.new(0, 8)
+highlightCorner.Parent = highlightButton
+
+local predictionButton = Instance.new("TextButton")
+predictionButton.Name = "PredictionButton"
+predictionButton.Parent = controlPanel
+predictionButton.Size = UDim2.new(1, 0, 0, 35)
+predictionButton.Position = UDim2.new(0, 0, 0, 105)
+predictionButton.Font = Enum.Font.SourceSansBold
+predictionButton.Text = "تسبيق"
+predictionButton.TextSize = 18
+predictionButton.TextColor3 = Color3.new(1, 1, 1)
+local predictionCorner = Instance.new("UICorner")
+predictionCorner.CornerRadius = UDim.new(0, 8)
+predictionCorner.Parent = predictionButton
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Parent = controlPanel
+toggleButton.Size = UDim2.new(1, -110, 0, 35)
+toggleButton.Position = UDim2.new(0, 55, 1, -35)
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.TextSize = 18
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+
+local leftArrow = Instance.new("TextButton")
+leftArrow.Parent = controlPanel
+leftArrow.Size = UDim2.new(0, 50, 0, 35)
+leftArrow.Position = UDim2.new(0, 0, 1, -35)
+leftArrow.Font = Enum.Font.SourceSansBold
+leftArrow.Text = "<"
+leftArrow.TextSize = 24
+leftArrow.TextColor3 = Color3.new(1, 1, 1)
+leftArrow.BackgroundColor3 = Color3.fromRGB(70, 73, 76)
+
+local rightArrow = Instance.new("TextButton")
+rightArrow.Parent = controlPanel
+rightArrow.Size = UDim2.new(0, 50, 0, 35)
+rightArrow.Position = UDim2.new(1, -50, 1, -35)
+rightArrow.Font = Enum.Font.SourceSansBold
+rightArrow.Text = ">"
+rightArrow.TextSize = 24
+rightArrow.TextColor3 = Color3.new(1, 1, 1)
+rightArrow.BackgroundColor3 = Color3.fromRGB(70, 73, 76)
+
+for _, button in ipairs({leftArrow, toggleButton, rightArrow}) do
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+end
+
+local toggleGuiButton = Instance.new("TextButton")
+toggleGuiButton.Size = UDim2.new(0, 40, 0, 40)
+toggleGuiButton.Position = UDim2.new(1, -50, 0, 10)
+toggleGuiButton.BackgroundColor3 = Color3.fromRGB(30, 32, 34)
+toggleGuiButton.Font = Enum.Font.SourceSansBold
+toggleGuiButton.Text = "•••"
+toggleGuiButton.TextSize = 20
+toggleGuiButton.TextColor3 = Color3.fromRGB(225, 225, 225)
+toggleGuiButton.Parent = screenGui
+local toggleGuiCorner = Instance.new("UICorner")
+toggleGuiCorner.CornerRadius = UDim.new(0, 8)
+toggleGuiCorner.Parent = toggleGuiButton
+local toggleGuiStroke = Instance.new("UIStroke")
+toggleGuiStroke.Color = Color3.fromRGB(80, 80, 80)
+toggleGuiStroke.Thickness = 1
+toggleGuiStroke.Parent = toggleGuiButton
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Parent = screenGui
+fovCircle.Size = UDim2.fromOffset(CONFIG.FOV_Size, CONFIG.FOV_Size)
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Position = UDim2.fromScale(0.5, 0.5)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Visible = false
+fovCircle.ZIndex = -1
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Thickness = 1.5
+stroke.Transparency = 0.4
+stroke.Parent = fovCircle
+local cornerCircle = Instance.new("UICorner")
+cornerCircle.CornerRadius = UDim.new(1, 0)
+cornerCircle.Parent = fovCircle
+
+dragBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local initialPos = mainContainer.Position
+        local initialInputPos = input.Position
+        local connection
+        connection = UserInputService.InputChanged:Connect(function(changedInput)
+            if changedInput.UserInputType == input.UserInputType then
+                local delta = changedInput.Position - initialInputPos
+                mainContainer.Position = UDim2.new(initialPos.X.Scale, initialPos.X.Offset + delta.X, initialPos.Y.Scale, initialPos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Wait()
+        connection:Disconnect()
+    end
+end)
+
+toggleGuiButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local initialPos = toggleGuiButton.Position
+        local initialInputPos = input.Position
+        local connection
+        connection = UserInputService.InputChanged:Connect(function(changedInput)
+            if changedInput.UserInputType == input.UserInputType then
+                local delta = changedInput.Position - initialInputPos
+                toggleGuiButton.Position = UDim2.new(initialPos.X.Scale, initialPos.X.Offset + delta.X, initialPos.Y.Scale, initialPos.Y.Offset + delta.Y)
+            end
+        end)
+        UserInputService.InputEnded:Wait()
+        connection:Disconnect()
+    end
+end)
+
+local function updateButtonVisuals()
+    if aimAssistEnabled then
+        toggleButton.Text = "التثبيت: يعمل"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+        leftArrow.Visible = true
+        rightArrow.Visible = true
+    else
+        toggleButton.Text = "التثبيت: متوقف"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(244, 67, 54)
+        leftArrow.Visible = false
+        rightArrow.Visible = false
+    end
+end
+
+local function updateHighlightVisuals()
+    if highlightEnabled then
+        highlightButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    else
+        highlightButton.BackgroundColor3 = Color3.fromRGB(80, 82, 85)
+    end
+end
+
+local function updatePredictionVisuals()
+    if predictionEnabled then
+        predictionButton.BackgroundColor3 = Color3.fromRGB(156, 39, 176)
+    else
+        predictionButton.BackgroundColor3 = Color3.fromRGB(80, 82, 85)
+    end
+end
+
+local function isTargetAlive(target)
+    return target and target.Parent and target.Parent:FindFirstChild("Humanoid") and target.Parent.Humanoid.Health > 0
+end
+
+local function findAllTargetsInFov()
+    if not localPlayer.Character or not localPlayer.Team then return {} end
+    local potentialTargets = {}
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Team ~= localPlayer.Team and isTargetAlive(player.Character and player.Character:FindFirstChild(CONFIG.TargetPart)) then
+            local targetPart = player.Character[CONFIG.TargetPart]
+            if (localPlayer.Character.HumanoidRootPart.Position - targetPart.Position).Magnitude <= CONFIG.MaxDistance then
+                local screenPoint, onScreen = camera:WorldToScreenPoint(targetPart.Position)
+                if onScreen and (screenCenter - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude < (CONFIG.FOV_Size / 2) then
+                    table.insert(potentialTargets, {part = targetPart, dist = (screenCenter - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude})
+                end
+            end
+        end
+    end
+    table.sort(potentialTargets, function(a, b) return a.dist < b.dist end)
+    local finalTargets = {}
+    for _, t in ipairs(potentialTargets) do table.insert(finalTargets, t.part) end
+    return finalTargets
+end
+
+local function getPredictedPosition(target)
+    if not target or CONFIG.ProjectileSpeed <= 0 then
+        return target.Position
+    end
+    
+    local playerPos = camera.CFrame.Position
+    local targetPos = target.Position
+    local targetVel = target.AssemblyLinearVelocity 
+    
+    local distance = (targetPos - playerPos).Magnitude
+    local timeToHit = distance / CONFIG.ProjectileSpeed
+    
+    local predictedPos = targetPos + (targetVel * timeToHit)
+    
+    return predictedPos
+end
+
+local function updateAim(deltaTime)
+    fovCircle.Visible = aimAssistEnabled
+    if not aimAssistEnabled then currentTarget = nil; return end
+    if not isTargetAlive(currentTarget) then currentTarget = nil end
+    
+    if currentTarget then
+        if predictionEnabled then
+            local predictedPosition = getPredictedPosition(currentTarget)
+            camera.CFrame = CFrame.new(camera.CFrame.Position, predictedPosition)
+        else
+            local newCFrame = CFrame.new(camera.CFrame.Position, currentTarget.Position)
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, deltaTime * CONFIG.AimSpeed)
+        end
+    end
+end
+
+local function setupInputValidation(textBox, configKey)
+	textBox.Changed:Connect(function(property)
+		if property == "Text" then
+			local newText = textBox.Text:gsub("%D", "")
+			if textBox.Text ~= newText then
+				textBox.Text = newText
+			end
+			local newValue = tonumber(newText)
+			if newValue and newValue > 0 then
+				CONFIG[configKey] = newValue
+			elseif newText == "" then
+				CONFIG[configKey] = 1
+			end
+		end
+	end)
+end
+setupInputValidation(distanceInput, "MaxDistance")
+setupInputValidation(speedInput, "AimSpeed")
+
+toggleButton.MouseButton1Click:Connect(function() aimAssistEnabled = not aimAssistEnabled; updateButtonVisuals() end)
+toggleGuiButton.MouseButton1Click:Connect(function() mainContainer.Visible = not mainContainer.Visible end)
+highlightButton.MouseButton1Click:Connect(function() highlightEnabled = not highlightEnabled; updateHighlightVisuals() end)
+predictionButton.MouseButton1Click:Connect(function() predictionEnabled = not predictionEnabled; updatePredictionVisuals() end)
+
+local function switchTarget(direction)
+    if arrowDebounce then return end
+    arrowDebounce = true
+    local nearbyTargets = findAllTargetsInFov()
+    if #nearbyTargets == 0 then
+        currentTarget = nil
+        task.wait(0.2)
+        arrowDebounce = false
+        return
+    end
+    local currentIndex = 0
+    for i, target in ipairs(nearbyTargets) do
+        if target == currentTarget then
+            currentIndex = i
+            break
+        end
+    end
+    local newIndex = (currentIndex == 0) and 1 or (currentIndex + direction)
+    if newIndex > #nearbyTargets then newIndex = 1 end
+    if newIndex < 1 then newIndex = #nearbyTargets end
+    currentTarget = nearbyTargets[newIndex]
+    task.wait(0.2)
+    arrowDebounce = false
+end
+
+leftArrow.MouseButton1Click:Connect(function() switchTarget(-1) end)
+rightArrow.MouseButton1Click:Connect(function() switchTarget(1) end)
+
+RunService.RenderStepped:Connect(updateAim)
+
+task.spawn(function()
+    while task.wait(0.25) do
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                local playerHighlight = player.Character:FindFirstChild("PlayerHighlight")
+                if player.Team ~= localPlayer.Team and highlightEnabled then
+                    if not playerHighlight then
+                        local newHighlight = Instance.new("Highlight")
+                        newHighlight.Name = "PlayerHighlight"
+                        newHighlight.OutlineColor = Color3.fromRGB(255, 25, 25)
+                        newHighlight.FillColor = Color3.fromRGB(255, 25, 25)
+                        newHighlight.OutlineTransparency = 0
+                        newHighlight.FillTransparency = 0.75
+                        newHighlight.Parent = player.Character
+                    end
+                else
+                    if playerHighlight then playerHighlight:Destroy() end
+                end
+            end
+        end
+    end
+end)
+
+updateButtonVisuals()
+updateHighlightVisuals()
+updatePredictionVisuals()
